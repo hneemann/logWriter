@@ -16,11 +16,10 @@ type logger struct {
 	folder         string
 	maxLinesInFile int
 	linesInFile    int
-	fileNum        int
-	counter        int
+	fileCounter    int
 	fileList       []string
+	filePosInList  int
 	file           *os.File
-	collectorPort  int
 }
 
 func newLogger(folder string, maxLinesInFile int, maxFiles int) *logger {
@@ -39,8 +38,8 @@ func (l *logger) checkFile() error {
 	}
 	if l.file == nil {
 		date := time.Now().Format("2006-01-02_15-04-05")
-		name := date + "_" + strconv.Itoa(l.counter) + ".log"
-		l.counter++
+		name := date + "_" + strconv.Itoa(l.fileCounter) + ".log"
+		l.fileCounter++
 		path := filepath.Join(l.folder, name)
 		f, err := os.Create(path)
 		if err != nil {
@@ -49,16 +48,16 @@ func (l *logger) checkFile() error {
 		l.linesInFile = 0
 		l.file = f
 
-		if l.fileList[l.fileNum] != "" {
-			err = os.Remove(l.fileList[l.fileNum])
+		if l.fileList[l.filePosInList] != "" {
+			err = os.Remove(l.fileList[l.filePosInList])
 			if err != nil {
 				return err
 			}
 		}
-		l.fileList[l.fileNum] = path
-		l.fileNum++
-		if l.fileNum == len(l.fileList) {
-			l.fileNum = 0
+		l.fileList[l.filePosInList] = path
+		l.filePosInList++
+		if l.filePosInList == len(l.fileList) {
+			l.filePosInList = 0
 		}
 	}
 	return nil
