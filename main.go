@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 type logger struct {
@@ -23,13 +24,15 @@ type logger struct {
 	fileList       []string
 	filePosInList  int
 	file           *os.File
+	out            io.Writer
 }
 
-func newLogger(folder string, maxLinesInFile int, maxFiles int) *logger {
+func NewLogger(folder string, maxLinesInFile int, maxFiles int, out io.Writer) *logger {
 	l := &logger{
 		folder:         folder,
 		maxLinesInFile: maxLinesInFile,
 		fileList:       make([]string, maxFiles),
+		out:            out,
 	}
 	return l
 }
@@ -66,7 +69,7 @@ func (l *logger) _checkFile() error {
 	return nil
 }
 
-func (l *logger) pipeToLogger(r io.Reader) {
+func (l *logger) PipeToLogger(r io.Reader) {
 	lr := bufio.NewReader(r)
 	for {
 		line, err := lr.ReadString('\n')
@@ -74,64 +77,82 @@ func (l *logger) pipeToLogger(r io.Reader) {
 			if err != io.EOF {
 				lines := strings.Split(err.Error(), "\n")
 				for _, li := range lines {
-					l.writeFile(li)
+					li = strings.TrimRightFunc(li, unicode.IsSpace)
+					l.WriteFile(li + "\n")
 				}
 			}
-			l.close()
+			l.Close()
 			return
 		} else {
-			l.writeFile(line)
+			l.WriteFile(line)
 		}
 	}
 }
 
-func (l *logger) writeFile(li string) {
+// WriteFile writes to the log file.
+// It expects the line to end with a newline
+func (l *logger) WriteFile(li string) {
 	l.m.Lock()
 	defer l.m.Unlock()
 
 	err := l._checkFile()
 	if err != nil {
-		fmt.Println(err)
+		l.Println(err)
 	}
 	if l.file != nil {
 		_, err = l.file.WriteString(li)
 		if err != nil {
-			fmt.Println(err)
+			l.Println(err)
 		}
 		l.linesInFile++
 	}
-	fmt.Print(li)
+
+	l.Print(li)
 }
 
-func (l *logger) close() {
+func (l *logger) Close() {
 	l.m.Lock()
 	defer l.m.Unlock()
 
 	if l.file != nil {
-		fmt.Println("closing file")
+		l.Println("closing file")
 		err := l.file.Close()
 		if err != nil {
-			fmt.Println(err)
+			l.Println(err)
 		}
 		l.file = nil
 	}
 }
 
+func (l *logger) Print(s string) {
+	l.out.Write([]byte(s))
+}
+
+func (l *logger) Println(s any) {
+	fmt.Fprint(l.out, s)
+	l.out.Write([]byte{'\n'})
+}
+
 // usage command 2>&1 | logWriter
 func main() {
-	maxLinesInFile := flag.Int("lines", 500, "max lines in file")
-	maxFiles := flag.Int("files", 5, "max files")
+	maxLinesInFile := flag.Int("lines", 1000, "max lines in file")
+	maxFiles := flag.Int("files", 10, "max files")
+	errOut := flag.Bool("errOut", true, "output to stdErr")
 	folder := flag.String("folder", ".", "folder")
 	flag.Parse()
 
-	l := newLogger(*folder, *maxLinesInFile, *maxFiles)
+	out := os.Stdout
+	if *errOut {
+		out = os.Stderr
+	}
+	l := NewLogger(*folder, *maxLinesInFile, *maxFiles, out)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		<-c
-		fmt.Println("logger received os.Interrupt")
+		l.Println("logger received os.Interrupt")
 	}()
 
-	l.pipeToLogger(os.Stdin)
+	l.PipeToLogger(os.Stdin)
 }
