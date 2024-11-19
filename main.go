@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type logger struct {
+	m              sync.Mutex
 	folder         string
 	maxLinesInFile int
 	linesInFile    int
@@ -31,7 +34,7 @@ func newLogger(folder string, maxLinesInFile int, maxFiles int) *logger {
 	return l
 }
 
-func (l *logger) checkFile() error {
+func (l *logger) _checkFile() error {
 	if l.linesInFile > l.maxLinesInFile && l.file != nil {
 		l.file.Close()
 		l.file = nil
@@ -68,11 +71,14 @@ func (l *logger) pipeToLogger(r io.Reader) {
 	for {
 		line, err := lr.ReadString('\n')
 		if err != nil {
-			lines := strings.Split(err.Error(), "\n")
-			for _, li := range lines {
-				l.writeFile(li)
+			if err != io.EOF {
+				lines := strings.Split(err.Error(), "\n")
+				for _, li := range lines {
+					l.writeFile(li)
+				}
 			}
-			break
+			l.close()
+			return
 		} else {
 			l.writeFile(line)
 		}
@@ -80,7 +86,10 @@ func (l *logger) pipeToLogger(r io.Reader) {
 }
 
 func (l *logger) writeFile(li string) {
-	err := l.checkFile()
+	l.m.Lock()
+	defer l.m.Unlock()
+
+	err := l._checkFile()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -94,6 +103,21 @@ func (l *logger) writeFile(li string) {
 	fmt.Print(li)
 }
 
+func (l *logger) close() {
+	l.m.Lock()
+	defer l.m.Unlock()
+
+	if l.file != nil {
+		fmt.Println("closing file")
+		err := l.file.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+		l.file = nil
+	}
+}
+
+// usage command 2>&1 | logWriter
 func main() {
 	maxLinesInFile := flag.Int("lines", 500, "max lines in file")
 	maxFiles := flag.Int("files", 5, "max files")
@@ -101,5 +125,13 @@ func main() {
 	flag.Parse()
 
 	l := newLogger(*folder, *maxLinesInFile, *maxFiles)
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		fmt.Println("logger received os.Interrupt")
+	}()
+
 	l.pipeToLogger(os.Stdin)
 }
