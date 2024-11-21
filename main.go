@@ -76,11 +76,14 @@ func (l *logger) PipeToLogger(r io.Reader) {
 		line, err := lr.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
+				l.WriteFile("logger: command terminated with error:\n")
 				lines := strings.Split(err.Error(), "\n")
 				for _, li := range lines {
 					li = strings.TrimRightFunc(li, unicode.IsSpace)
 					l.WriteFile(li + "\n")
 				}
+			} else {
+				l.WriteFile("logger: command terminated with EOF\n")
 			}
 			l.Close()
 			return
@@ -116,7 +119,7 @@ func (l *logger) Close() {
 	defer l.m.Unlock()
 
 	if l.file != nil {
-		l.Println("closing file")
+		l.Println("logger: closing file")
 		err := l.file.Close()
 		if err != nil {
 			l.Println(err)
@@ -138,6 +141,7 @@ func (l *logger) Println(s any) {
 func main() {
 	maxLinesInFile := flag.Int("lines", 1000, "max lines in file")
 	maxFiles := flag.Int("files", 10, "max files")
+	termDelay := flag.Duration("delay", 2*time.Second, "delay before exit")
 	errOut := flag.Bool("errOut", true, "output to stdErr")
 	folder := flag.String("folder", ".", "folder")
 	flag.Parse()
@@ -151,8 +155,12 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-c
-		l.Println("logger received SIGINT/SIGTERM")
+		s := <-c
+		l.Println("logger: received signal: " + s.String())
+		time.Sleep(*termDelay)
+		l.Println("logger: command not terminated after " + (*termDelay).String() + "!, exit!")
+		l.Close()
+		os.Exit(0)
 	}()
 
 	l.PipeToLogger(os.Stdin)
