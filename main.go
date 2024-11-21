@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -148,10 +149,10 @@ func main() {
 	l := NewLogger(*folder, *maxLinesInFile, *maxFiles, out)
 
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-c
-		l.Println("logger received os.Interrupt")
+		l.Println("logger received SIGINT/SIGTERM")
 	}()
 
 	l.PipeToLogger(os.Stdin)
