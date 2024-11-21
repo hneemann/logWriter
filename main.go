@@ -166,9 +166,9 @@ func main() {
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		s := <-c
-		l.Println("logger: received signal: " + s.String())
+		l.WriteFile("logger: received signal: " + s.String() + "\n")
 		time.Sleep(*termDelay)
-		l.Println("logger: command not terminated after " + (*termDelay).String() + "!, exit!")
+		l.WriteFile("logger: command not terminated after " + (*termDelay).String() + "!, exit!\n")
 		l.Close()
 		os.Exit(0)
 	}()
