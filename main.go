@@ -16,7 +16,7 @@ import (
 	"unicode"
 )
 
-type logger struct {
+type Logger struct {
 	m              sync.Mutex
 	folder         string
 	maxLinesInFile int
@@ -28,8 +28,12 @@ type logger struct {
 	out            io.Writer
 }
 
-func NewLogger(folder string, maxLinesInFile int, maxFiles int, out io.Writer) *logger {
-	l := &logger{
+// NewLogger creates a new logger that writes to the folder [folder].
+// The logger writes at most [maxLinesInFile] lines to a file.
+// The logger keeps at most [maxFiles] files.
+// The logger writes to the output stream [out].
+func NewLogger(folder string, maxLinesInFile int, maxFiles int, out io.Writer) *Logger {
+	l := &Logger{
 		folder:         folder,
 		maxLinesInFile: maxLinesInFile,
 		fileList:       make([]string, maxFiles),
@@ -38,7 +42,7 @@ func NewLogger(folder string, maxLinesInFile int, maxFiles int, out io.Writer) *
 	return l
 }
 
-func (l *logger) _checkFile() error {
+func (l *Logger) _checkFile() error {
 	if l.linesInFile > l.maxLinesInFile && l.file != nil {
 		l.file.Close()
 		l.file = nil
@@ -70,7 +74,9 @@ func (l *logger) _checkFile() error {
 	return nil
 }
 
-func (l *logger) PipeToLogger(r io.Reader) {
+// PipeToLogger reads from the reader [r] and writes to the log file
+// and the output stream. The function returns when the reader is closed.
+func (l *Logger) PipeToLogger(r io.Reader) {
 	lr := bufio.NewReader(r)
 	for {
 		line, err := lr.ReadString('\n')
@@ -93,9 +99,9 @@ func (l *logger) PipeToLogger(r io.Reader) {
 	}
 }
 
-// WriteFile writes to the log file.
+// WriteFile writes to the log file and the output stream.
 // It expects the line to end with a newline
-func (l *logger) WriteFile(li string) {
+func (l *Logger) WriteFile(li string) {
 	l.m.Lock()
 	defer l.m.Unlock()
 
@@ -114,7 +120,8 @@ func (l *logger) WriteFile(li string) {
 	l.Print(li)
 }
 
-func (l *logger) Close() {
+// Close closes the log file.
+func (l *Logger) Close() {
 	l.m.Lock()
 	defer l.m.Unlock()
 
@@ -128,11 +135,14 @@ func (l *logger) Close() {
 	}
 }
 
-func (l *logger) Print(s string) {
+// Print writes to the output stream only.
+func (l *Logger) Print(s string) {
 	l.out.Write([]byte(s))
 }
 
-func (l *logger) Println(s any) {
+// Println writes to the output stream only.
+// A newline is appended to the string.
+func (l *Logger) Println(s any) {
 	fmt.Fprint(l.out, s)
 	l.out.Write([]byte{'\n'})
 }
